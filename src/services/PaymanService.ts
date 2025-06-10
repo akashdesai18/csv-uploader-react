@@ -19,7 +19,6 @@ class PaymanService {
   private static instance: PaymanService;
   private initialized: boolean = false;
   private paymanClient: PaymanClient | null = null;
-  private processingPayments: Set<string> = new Set();
 
   private constructor() {
     // Initialize client if token exists
@@ -38,14 +37,6 @@ class PaymanService {
 
   isInitialized(): boolean {
     return this.initialized && this.paymanClient !== null;
-  }
-
-  private getAuthHeader(): string {
-    const token = localStorage.getItem('payman_token');
-    if (!token) {
-      throw new Error('Not authenticated');
-    }
-    return `Bearer ${token}`;
   }
 
   private initializeClient() {
@@ -71,21 +62,8 @@ class PaymanService {
     }
   }
 
-  private getPaymentKey(payment: PaymentData): string {
-    return `${payment.payeeName}-${payment.amount}-${payment.sourceWallet}`;
-  }
-
   async processPayment(payment: PaymentData): Promise<PaymentResult> {
     try {
-      // Check if payment is already being processed
-      const paymentKey = this.getPaymentKey(payment);
-      if (this.processingPayments.has(paymentKey)) {
-        throw new Error('This payment is already being processed');
-      }
-
-      // Mark payment as being processed
-      this.processingPayments.add(paymentKey);
-
       // Ensure client is initialized
       if (!this.isInitialized()) {
         this.initializeClient();
@@ -95,13 +73,33 @@ class PaymanService {
         throw new Error('Failed to initialize Payman client');
       }
 
-      // Make the payment using the SDK's ask method
-      const response = await this.paymanClient.ask(
-        `Send ${payment.amount} from ${payment.sourceWallet} to ${payment.payeeName}`
-      );
+      // Create the payment command
+      const paymentCommand = `Send ${payment.amount} from ${payment.sourceWallet} to ${payment.payeeName}`;
+      console.log('Processing payment with command:', paymentCommand);
 
-      // Check response for awaiting approval indication
+      // Make a single SDK call and store the response
+      let response;
+      try {
+        response = await this.paymanClient.ask(paymentCommand);
+      } catch (sdkError) {
+        // If the SDK throws an error, check if it's an "awaiting approval" message
+        const errorMessage = sdkError instanceof Error ? sdkError.message : 'Unknown error occurred';
+        if (errorMessage.toLowerCase().includes('awaiting approval') || 
+            errorMessage.toLowerCase().includes('pending approval')) {
+          return {
+            ...payment,
+            status: 'awaiting_approval',
+            message: 'Payment initiated and awaiting approval'
+          };
+        }
+        throw sdkError; // Re-throw if it's not an approval message
+      }
+
+      // Process the response
       const responseStr = response?.toString().toLowerCase() || '';
+      console.log('Payment response:', responseStr);
+
+      // Check for approval status in the response
       if (responseStr.includes('awaiting approval') || responseStr.includes('pending approval')) {
         return {
           ...payment,
@@ -110,6 +108,7 @@ class PaymanService {
         };
       }
 
+      // If we get here, the payment was successful
       return {
         ...payment,
         status: 'success',
@@ -117,27 +116,11 @@ class PaymanService {
       };
     } catch (error) {
       console.error('Error processing payment:', error);
-      
-      // Check if the error message indicates awaiting approval
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      if (errorMessage.toLowerCase().includes('awaiting approval') || 
-          errorMessage.toLowerCase().includes('pending approval')) {
-        return {
-          ...payment,
-          status: 'awaiting_approval',
-          message: 'Payment initiated and awaiting approval'
-        };
-      }
-
       return {
         ...payment,
         status: 'error',
-        error: errorMessage
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
-    } finally {
-      // Remove payment from processing set
-      const paymentKey = this.getPaymentKey(payment);
-      this.processingPayments.delete(paymentKey);
     }
   }
 
@@ -148,26 +131,14 @@ class PaymanService {
     }
 
     const results: PaymentResult[] = [];
-    const processedKeys = new Set<string>();
 
-    // Process payments sequentially
+    // Process payments sequentially with delay between each
     for (const payment of data) {
-      const paymentKey = this.getPaymentKey(payment);
-      
-      // Skip if this exact payment was already processed in this batch
-      if (processedKeys.has(paymentKey)) {
-        console.warn('Skipping duplicate payment:', payment);
-        continue;
-      }
-
-      processedKeys.add(paymentKey);
       const result = await this.processPayment(payment);
       results.push(result);
       
-      // If there's a timeout error, wait a bit before continuing
-      if (result.status === 'error' && result.error?.toLowerCase().includes('timeout')) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-      }
+      // Add a small delay between payments to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     return results;
@@ -177,7 +148,6 @@ class PaymanService {
     localStorage.removeItem('payman_token');
     this.initialized = false;
     this.paymanClient = null;
-    this.processingPayments.clear();
   }
 }
 
