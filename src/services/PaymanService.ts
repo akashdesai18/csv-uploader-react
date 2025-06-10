@@ -8,8 +8,8 @@ interface PaymentData {
 
 interface PaymentResult extends PaymentData {
   status: 'success' | 'error' | 'awaiting_approval';
+  sdkResponse: string;  // Capture the exact SDK response
   error?: string;
-  message?: string;
 }
 
 class PaymanService {
@@ -55,39 +55,43 @@ class PaymanService {
       return {
         ...payment,
         status: 'error',
+        sdkResponse: 'Client not initialized',
         error: 'Not authenticated'
       };
     }
 
     try {
-      // ONE SDK call, no retries
+      // Make exactly one SDK call and capture the response
       const response = await this.paymanClient.ask(
         `Send ${payment.amount} from ${payment.sourceWallet} to ${payment.payeeName}`
       );
 
-      // If we get a response, it's either success or awaiting approval
-      const responseStr = (response?.toString() || '').toLowerCase();
-      
-      if (responseStr.includes('awaiting approval') || responseStr.includes('pending approval')) {
+      // Always capture the exact response string
+      const sdkResponse = response?.toString() || 'No response from SDK';
+      const responseLower = sdkResponse.toLowerCase();
+
+      if (responseLower.includes('awaiting approval') || responseLower.includes('pending approval')) {
         return {
           ...payment,
           status: 'awaiting_approval',
-          message: 'Payment awaiting approval'
+          sdkResponse
         };
       }
 
       return {
         ...payment,
         status: 'success',
-        message: 'Payment successful'
+        sdkResponse
       };
 
     } catch (error) {
-      // Any error means failure, no retries
+      // Capture error message as the SDK response
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
         ...payment,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Payment failed'
+        sdkResponse: errorMessage,
+        error: errorMessage
       };
     }
   }
