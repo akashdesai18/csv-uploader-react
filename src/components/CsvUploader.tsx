@@ -13,9 +13,10 @@ interface CsvUploaderProps {
   onUpload: (data: PaymentData[]) => void;
   onProcess: () => void;
   parsedData: PaymentData[];
+  isProcessing: boolean;
 }
 
-const CsvUploader = ({ onUpload, onProcess, parsedData }: CsvUploaderProps) => {
+const CsvUploader = ({ onUpload, onProcess, parsedData, isProcessing }: CsvUploaderProps) => {
   const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -118,9 +119,9 @@ const CsvUploader = ({ onUpload, onProcess, parsedData }: CsvUploaderProps) => {
               variant="contained"
               color="primary"
               onClick={onProcess}
-              disabled={parsedData.length === 0}
+              disabled={parsedData.length === 0 || isProcessing}
             >
-              Process Payments
+              {isProcessing ? 'Processing...' : 'Process Payments'}
             </Button>
           </Box>
         </>

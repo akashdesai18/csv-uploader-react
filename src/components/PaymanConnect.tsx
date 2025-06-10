@@ -5,9 +5,10 @@ import { Button } from '@mui/material';
 interface PaymanConnectProps {
   onConnect?: () => void;
   onDisconnect?: () => void;
+  onTokenExchange?: (isExchanging: boolean) => void;
 }
 
-const PaymanConnect = ({ onConnect, onDisconnect }: PaymanConnectProps = {}) => {
+const PaymanConnect = ({ onConnect, onDisconnect, onTokenExchange }: PaymanConnectProps = {}) => {
   const [isConnected, setIsConnected] = useState(false);
 
   // Memoize the message handler to keep it stable between renders
@@ -17,6 +18,9 @@ const PaymanConnect = ({ onConnect, onDisconnect }: PaymanConnectProps = {}) => 
       const code = url.searchParams.get('code');
       if (code) {
         try {
+          // Signal start of token exchange
+          if (onTokenExchange) onTokenExchange(true);
+
           // Initialize PaymanClient with auth code
           const client = PaymanClient.withAuthCode(
             {
@@ -51,10 +55,13 @@ const PaymanConnect = ({ onConnect, onDisconnect }: PaymanConnectProps = {}) => 
         } catch (error) {
           console.error('Token exchange failed:', error);
           if (onDisconnect) onDisconnect();
+        } finally {
+          // Signal end of token exchange
+          if (onTokenExchange) onTokenExchange(false);
         }
       }
     }
-  }, [onConnect, onDisconnect]);
+  }, [onConnect, onDisconnect, onTokenExchange]);
 
   useEffect(() => {
     // Check if already connected
@@ -94,7 +101,7 @@ const PaymanConnect = ({ onConnect, onDisconnect }: PaymanConnectProps = {}) => 
         scriptsToRemove.forEach(script => script.remove());
       };
     }
-  }, [handleMessage]); // Only depend on the memoized handler
+  }, [handleMessage]);
 
   const handleDisconnect = () => {
     // Remove the script when disconnecting

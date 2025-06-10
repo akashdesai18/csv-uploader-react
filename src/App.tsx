@@ -7,6 +7,7 @@ import CsvUploader from './components/CsvUploader';
 import AgentCommunication from './components/AgentCommunication';
 import ResultsTable from './components/ResultsTable';
 import OAuthCallback from './components/OAuthCallback';
+import LoadingOverlay from './components/LoadingOverlay';
 import PaymanService from './services/PaymanService';
 
 const theme = createTheme({
@@ -34,6 +35,8 @@ function MainApp() {
   const [parsedData, setParsedData] = useState<PaymentData[]>([]);
   const [results, setResults] = useState<PaymentData[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isExchangingToken, setIsExchangingToken] = useState(false);
 
   useEffect(() => {
     // Check for auth success/errors
@@ -64,6 +67,7 @@ function MainApp() {
   };
 
   const handleProcessPayments = async () => {
+    setIsProcessing(true);
     addMessage('Processing payments...');
     try {
       const results = await PaymanService.getInstance().processCSVPayments(parsedData);
@@ -73,6 +77,8 @@ function MainApp() {
     } catch (error: any) {
       const errorMessage = error?.message || 'Unknown error occurred';
       addMessage(`❌ Error processing payments: ${errorMessage}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -84,6 +90,13 @@ function MainApp() {
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4 }}>
+      {(isProcessing || isExchangingToken) && (
+        <LoadingOverlay 
+          message={isExchangingToken 
+            ? "Connecting to Payman..." 
+            : "Processing payments..."}
+        />
+      )}
       <Box sx={{ display: 'flex', gap: 3 }}>
         {/* Main Content */}
         <Box sx={{ flex: 1 }}>
@@ -119,6 +132,9 @@ function MainApp() {
                 setShowResults(false);
                 addMessage('Disconnected from Payman');
               }}
+              onTokenExchange={(isExchanging) => {
+                setIsExchangingToken(isExchanging);
+              }}
             />
           </Paper>
           
@@ -129,6 +145,7 @@ function MainApp() {
                   parsedData={parsedData}
                   onUpload={handleFileUpload}
                   onProcess={handleProcessPayments}
+                  isProcessing={isProcessing}
                 />
               ) : (
                 <ResultsTable 
