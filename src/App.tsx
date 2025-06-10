@@ -9,6 +9,7 @@ import ResultsTable from './components/ResultsTable';
 import OAuthCallback from './components/OAuthCallback';
 import LoadingOverlay from './components/LoadingOverlay';
 import PaymanService from './services/PaymanService';
+import type { PaymentData, PaymentResult } from './services/PaymanService';
 
 const theme = createTheme({
   palette: {
@@ -21,19 +22,13 @@ const theme = createTheme({
   },
 });
 
-interface PaymentData {
-  payeeName: string;
-  amount: string;
-  sourceWallet: string;
-}
-
 function MainApp() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const [parsedData, setParsedData] = useState<PaymentData[]>([]);
-  const [results, setResults] = useState<PaymentData[]>([]);
+  const [results, setResults] = useState<PaymentResult[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isExchangingToken, setIsExchangingToken] = useState(false);
@@ -61,14 +56,40 @@ function MainApp() {
   };
 
   const handleFileUpload = (data: PaymentData[]) => {
-    setParsedData(data);
+    // Log the data for debugging
+    console.log('Received CSV data:', data);
+    
+    // Validate each payment before setting
+    const validPayments = data.filter(payment => {
+      const isValid = payment.payeeName && 
+                     payment.amount && 
+                     payment.sourceWallet &&
+                     // Ensure these aren't header values
+                     !payment.payeeName.toLowerCase().includes('payee') &&
+                     !payment.amount.toLowerCase().includes('amount') &&
+                     !payment.sourceWallet.toLowerCase().includes('source');
+      
+      if (!isValid) {
+        console.log('Filtered out invalid payment:', payment);
+      }
+      return isValid;
+    });
+
+    console.log('Valid payments to process:', validPayments);
+    setParsedData(validPayments);
     setShowResults(false);
-    addMessage('CSV file parsed successfully');
+    addMessage(`CSV file parsed successfully. Found ${validPayments.length} valid payments to process.`);
   };
 
   const handleProcessPayments = async () => {
+    if (parsedData.length === 0) {
+      addMessage('❌ No valid payments to process');
+      return;
+    }
+
     setIsProcessing(true);
-    addMessage('Processing payments...');
+    addMessage(`Processing ${parsedData.length} payments...`);
+    
     try {
       const results = await PaymanService.getInstance().processCSVPayments(parsedData);
       setResults(results);
@@ -84,6 +105,7 @@ function MainApp() {
 
   const handleProcessAnother = () => {
     setParsedData([]);
+    setResults([]);
     setShowResults(false);
     addMessage('Ready to process another file');
   };

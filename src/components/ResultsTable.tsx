@@ -1,17 +1,9 @@
 import { Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Button, Box, Tooltip } from '@mui/material';
 import { Upload, Info } from '@mui/icons-material';
-
-interface PaymentData {
-  payeeName: string;
-  amount: string;
-  sourceWallet: string;
-  status: 'success' | 'error' | 'awaiting_approval';
-  sdkResponse: string;
-  error?: string;
-}
+import type { PaymentResult } from '../services/PaymanService';
 
 interface ResultsTableProps {
-  results: PaymentData[];
+  results: PaymentResult[];
   onProcessAnother: () => void;
 }
 

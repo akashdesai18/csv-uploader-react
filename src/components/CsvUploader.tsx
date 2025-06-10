@@ -2,12 +2,7 @@ import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-
-interface PaymentData {
-  payeeName: string;
-  amount: string;
-  sourceWallet: string;
-}
+import type { PaymentData } from '../services/PaymanService';
 
 interface CsvUploaderProps {
   onUpload: (data: PaymentData[]) => void;
@@ -16,8 +11,18 @@ interface CsvUploaderProps {
   isProcessing: boolean;
 }
 
+const REQUIRED_HEADERS = ['payee_name', 'amount', 'source_wallet'];
+
 const CsvUploader = ({ onUpload, onProcess, parsedData, isProcessing }: CsvUploaderProps) => {
   const [error, setError] = useState<string | null>(null);
+
+  const validateHeaders = (headers: string[]): boolean => {
+    const normalizedHeaders = headers.map(h => h.toLowerCase().trim().replace(/\s+/g, '_'));
+    return REQUIRED_HEADERS.every(required => 
+      normalizedHeaders.includes(required) || 
+      normalizedHeaders.includes(required.replace('_', ''))
+    );
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setError(null);
@@ -29,18 +34,36 @@ const CsvUploader = ({ onUpload, onProcess, parsedData, isProcessing }: CsvUploa
         try {
           const text = e.target?.result as string;
           const rows = text.split('\n');
-          const headers = rows[0].split(',').map(header => header.trim());
           
+          // Get and validate headers
+          const headers = rows[0].split(',').map(header => header.toLowerCase().trim());
+          if (!validateHeaders(headers)) {
+            setError('CSV must contain columns: Payee Name, Amount, Source Wallet');
+            return;
+          }
+
+          // Find column indices
+          const payeeNameIndex = headers.findIndex(h => h.includes('payee'));
+          const amountIndex = headers.findIndex(h => h.includes('amount'));
+          const sourceWalletIndex = headers.findIndex(h => h.includes('source'));
+          
+          // Parse data rows (skip header row)
           const data = rows.slice(1)
             .filter(row => row.trim()) // Skip empty rows
             .map(row => {
               const values = row.split(',').map(value => value.trim());
               return {
-                payeeName: values[0],
-                amount: values[1],
-                sourceWallet: values[2]
+                payeeName: values[payeeNameIndex],
+                amount: values[amountIndex],
+                sourceWallet: values[sourceWalletIndex]
               };
-            });
+            })
+            .filter(row => row.payeeName && row.amount && row.sourceWallet); // Skip incomplete rows
+
+          if (data.length === 0) {
+            setError('No valid payment data found in CSV');
+            return;
+          }
 
           onUpload(data);
         } catch (err) {
@@ -81,8 +104,11 @@ const CsvUploader = ({ onUpload, onProcess, parsedData, isProcessing }: CsvUploa
         <Typography variant="h6" gutterBottom>
           Drag & drop your CSV file here
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" gutterBottom>
           or click to select a file
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          CSV must have columns: Payee Name, Amount, Source Wallet
         </Typography>
         {error && (
           <Typography color="error" sx={{ mt: 2 }}>
@@ -121,7 +147,7 @@ const CsvUploader = ({ onUpload, onProcess, parsedData, isProcessing }: CsvUploa
               onClick={onProcess}
               disabled={parsedData.length === 0 || isProcessing}
             >
-              {isProcessing ? 'Processing...' : 'Process Payments'}
+              {isProcessing ? 'Processing...' : `Process ${parsedData.length} Payment${parsedData.length > 1 ? 's' : ''}`}
             </Button>
           </Box>
         </>
